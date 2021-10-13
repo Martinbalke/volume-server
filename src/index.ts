@@ -1,24 +1,31 @@
 import express from 'express' // Express web server framework
 import request from 'request' // "Request" library
 import cors from 'cors';
+/* tslint:disable-next-line */
 const querystring = require('querystring');
 import cookieParser from 'cookie-parser'
+import dotenv from 'dotenv'
 
-const client_id = 'CLIENT_ID'; // Your client id
-const client_secret = 'CLIENT_SECRET'; // Your secret
-const redirect_uri = 'REDIRECT_URI'; // Your redirect uri
+dotenv.config();
+
+/* tslint:disable-next-line */
+const client_id = process.env.CLIENT_ID;
+/* tslint:disable-next-line */
+const client_secret = process.env.CLIENT_SECRET;
+/* tslint:disable-next-line */
+const redirect_uri= process.env.REDIRECT_URI;
 
 /**
  * Generates a random string containing numbers and letters
  * @param  {number} length The length of the string
  * @return {string} The generated string
  */
-const generateRandomString = function (length: Number) {
+const generateRandomString = (length: number) => {
   let text = '';
 	const possible =
 		'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-	for (const i = 0; i < length; i++) {
+	for (let i = 0; i < length; i++) {
 		text += possible.charAt(Math.floor(Math.random() * possible.length));
 	}
 	return text;
@@ -31,9 +38,11 @@ const app = express();
 app
 	.use(express.static(__dirname + '/public'))
 	.use(cors())
-	.use(cookieParser());
+  .use(cookieParser());
 
-app.get('/login', function (req, res) {
+app.get('/', (_, res) => res.send('Login'))
+
+app.get('/login', (_, res) => {
 	const state = generateRandomString(16);
 	res.cookie(stateKey, state);
 
@@ -43,21 +52,26 @@ app.get('/login', function (req, res) {
 		'https://accounts.spotify.com/authorize?' +
 			querystring.stringify({
 				response_type: 'code',
-				client_id: client_id,
-				scope: scope,
-				redirect_uri: redirect_uri,
-				state: state,
+				client_id,
+				scope,
+				redirect_uri,
+				state,
 			})
 	);
 });
 
-app.get('/callback', function (req, res) {
+app.get('/callback', (req, res) => {
 	// your application requests refresh and access tokens
 	// after checking the state parameter
+  let code = null
+  let state = null
+  let storedState = null
+  if (req.query) {
+      code = req.query.code;
+     state = req.query.state;
+  }
+  if (req.cookies) { storedState = req.cookies[stateKey] };
 
-	const code = req.query.code || null;
-	const state = req.query.state || null;
-	const storedState = req.cookies ? req.cookies[stateKey] : null;
 
 	if (state === null || state !== storedState) {
 		res.redirect(
@@ -71,8 +85,8 @@ app.get('/callback', function (req, res) {
 		const authOptions = {
 			url: 'https://accounts.spotify.com/api/token',
 			form: {
-				code: code,
-				redirect_uri: redirect_uri,
+				code,
+				redirect_uri,
 				grant_type: 'authorization_code',
 			},
 			headers: {
@@ -83,10 +97,10 @@ app.get('/callback', function (req, res) {
 			json: true,
 		};
 
-		request.post(authOptions, function (error, response, body) {
+		request.post(authOptions, (error, response, body) => {
 			if (!error && response.statusCode === 200) {
-				const access_token = body.access_token,
-					refresh_token = body.refresh_token;
+				const access_token = body.access_token;
+				const refresh_token = body.refresh_token;
 
 				const options = {
 					url: 'https://api.spotify.com/v1/me',
@@ -94,8 +108,11 @@ app.get('/callback', function (req, res) {
 					json: true,
 				};
 
-				// use the access token to access the Spotify Web API
-				request.get(options, function (error, response, body) {
+				// use the access token to access the Spotify Web API\
+				/* tslint:disable-next-line */
+				request.get(options, (error, _, body) => {
+					if (error) throw new Error(error);
+					/* tslint:disable-next-line */
 					console.log(body);
 				});
 
@@ -103,8 +120,8 @@ app.get('/callback', function (req, res) {
 				res.redirect(
 					'/#' +
 						querystring.stringify({
-							access_token: access_token,
-							refresh_token: refresh_token,
+							access_token,
+							refresh_token,
 						})
 				);
 			} else {
@@ -119,7 +136,7 @@ app.get('/callback', function (req, res) {
 	}
 });
 
-app.get('/refresh_token', function (req, res) {
+app.get('/refresh_token', (req, res) => {
 	// requesting access token from refresh token
 	const refresh_token = req.query.refresh_token;
 	const authOptions = {
@@ -127,24 +144,25 @@ app.get('/refresh_token', function (req, res) {
 		headers: {
 			Authorization:
 				'Basic ' +
-				new Buffer(client_id + ':' + client_secret).toString('base64'),
+				Buffer.from(client_id + ':' + client_secret).toString('base64'),
 		},
 		form: {
 			grant_type: 'refresh_token',
-			refresh_token: refresh_token,
+			refresh_token,
 		},
 		json: true,
 	};
 
-	request.post(authOptions, function (error, response, body) {
+	request.post(authOptions, (error, response, body) => {
 		if (!error && response.statusCode === 200) {
 			const access_token = body.access_token;
 			res.send({
-				access_token: access_token,
+				access_token,
 			});
 		}
 	});
 });
 
+/* tslint:disable-next-line */
 console.log('Listening on 8888');
 app.listen(8888);
